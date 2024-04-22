@@ -115,9 +115,8 @@ int main()
     bpm::text sentence1{"The quick brown fox jumps over the lazy dog!", notosm, bpm::white};
     bpm::text sentence2{"The quick brown fox jumps over the lazy dog!", notoss, bpm::white};
 
-    while (w)
+    for (auto frame : w)
     {
-        bpm::frame frame{w};
         frame(bpm::black);
         draw_color_bars(frame, window_size);
         draw_corner_pixels(frame, window_size);

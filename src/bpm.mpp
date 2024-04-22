@@ -639,6 +639,8 @@ export auto mouse_wheel() noexcept -> vector2d
     return {std::int32_t(vec.x), std::int32_t(vec.y)};
 }
 
+class frame;
+
 export class window
 {
 public:
@@ -703,14 +705,82 @@ public:
     {
         return ::GetFPS();
     }
+
+    class const_iterator
+    {
+        const window* w;
+
+    public:
+
+        using iterator_concept = std::input_iterator_tag;
+        using value_type = frame;
+        using difference_type = std::int64_t;
+
+        explicit const_iterator(const window& win)
+            : w{&win}
+        {}
+
+        const_iterator(const_iterator const&) = delete;
+        const_iterator& operator=(const_iterator const&) = delete;
+        const_iterator(const_iterator&&) = default;
+        const_iterator& operator=(const_iterator&&) = default;
+
+        frame operator*() const;
+
+        const_iterator& operator++() noexcept
+        {
+            return *this;
+        }
+
+        void operator++(int) noexcept
+        {}
+    };
+
+    struct sentinel
+    {
+        [[nodiscard]] friend bool operator==(const_iterator const&, sentinel) noexcept
+        {
+            return ::WindowShouldClose();
+        }
+
+        [[nodiscard]] friend bool operator==(sentinel, const_iterator const&) noexcept
+        {
+            return ::WindowShouldClose();
+        }
+
+        [[nodiscard]] friend bool operator!=(const_iterator const&, sentinel) noexcept
+        {
+            return !::WindowShouldClose();
+        }
+
+        [[nodiscard]] friend bool operator!=(sentinel, const_iterator const&) noexcept
+        {
+            return !::WindowShouldClose();
+        }
+    };
+
+    const_iterator begin() const noexcept
+    {
+        return const_iterator{*this};
+    }
+
+    sentinel end() const noexcept
+    {
+        return {};
+    }
 };
 
 export class frame
 {
-    window* w;
+    const window* w = nullptr;
 
 public:
-    explicit frame(window& win)
+
+    using iterator_concept = std::input_iterator_tag;
+    using value_type = image;
+    using difference_type = std::int64_t;
+
+    explicit frame(const window& win)
         : w{&win}
     {
         ::BeginDrawing();
@@ -718,31 +788,54 @@ public:
 
     ~frame()
     {
-        ::EndDrawing();
+        if (w) {
+            ::EndDrawing();
+        }
     }
 
     frame(frame const&) = delete;
     frame& operator=(frame const&) = delete;
-    frame(frame&&) = delete;
-    frame& operator=(frame&&) = delete;
+
+    frame(frame&& f)
+        : w{std::exchange(f.w, nullptr)}
+    {}
+
+    frame& operator=(frame&& f)
+    {
+        if (this != &f) {
+            w = std::exchange(f.w, nullptr);
+        }
+        return *this;
+    }
+
+    image operator*() const
+    {
+        return image{size()};
+    }
+
+    void next() const
+    {
+        ::EndDrawing();
+        ::BeginDrawing();
+    }
 
     void operator()(color col) const noexcept
     {
         ::ClearBackground(::Color{col.r, col.g, col.b, col.a});
     }
 
-    void operator()(pixel pix, point2d pos)
+    void operator()(pixel pix, point2d pos) const noexcept
     {
         ::DrawPixel(pos.x, pos.y, ::Color{pix.col.r, pix.col.g, pix.col.b, pix.col.a});
     }
 
-    void operator()(line2d line, point2d pos)
+    void operator()(line2d line, point2d pos) const noexcept
     {
         point2d end = pos + line.dir;
         ::DrawLine(pos.x, pos.y, end.x, end.y, ::Color{line.col.r, line.col.g, line.col.b, line.col.a});
     }
 
-    void operator()(circle c, point2d pos)
+    void operator()(circle c, point2d pos) const noexcept
     {
         auto x_max = std::int32_t(c.radius);
         for (std::int32_t y = 0; y <= c.radius; ++y) {
@@ -766,7 +859,7 @@ public:
         }
     }
 
-    void operator()(triangle t, point2d pos)
+    void operator()(triangle t, point2d pos) const noexcept
     {
         ::DrawTriangle(
             ::Vector2{float(pos.x), float(pos.y)},
@@ -776,7 +869,7 @@ public:
         );
     }
 
-    void operator()(rectangle r, point2d pos)
+    void operator()(rectangle r, point2d pos) const noexcept
     {
         ::DrawRectangle(pos.x, pos.y, r.size.x, r.size.y, ::Color{r.col.r, r.col.g, r.col.b, r.col.a});
     }
@@ -813,7 +906,7 @@ public:
         );
     }
 
-    void operator()(text const& t, point2d pos)
+    void operator()(text const& t, point2d pos) const noexcept
     {
         ::DrawTextEx(
             t.fnt->fnt,
@@ -829,6 +922,15 @@ public:
         return w->size();
     }
 };
+
+frame window::const_iterator::operator*() const
+{
+    return frame{*w};
+}
+
+static_assert(std::input_iterator<window::const_iterator>);
+
+static_assert(std::ranges::input_range<window>);
 
 export struct audio_device
 {
@@ -1094,6 +1196,16 @@ export enum class key
 export bool key_down(key k) noexcept
 {
     return ::IsKeyDown(static_cast<int>(k));
+}
+
+export bool key_pressed(key k) noexcept
+{
+    return ::IsKeyPressed(static_cast<int>(k));
+}
+
+export bool key_released(key k) noexcept
+{
+    return ::IsKeyReleased(static_cast<int>(k));
 }
 
 }
