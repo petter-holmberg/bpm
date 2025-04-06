@@ -1,6 +1,8 @@
 import std;
 import bpm;
 
+using duration = std::chrono::duration<float>;
+
 inline constexpr std::array color_bars
 {
     bpm::white,
@@ -15,9 +17,9 @@ inline constexpr std::array color_bars
 
 void draw_color_bars(bpm::frame& frame, bpm::vector2d window_size)
 {
-    int x = 0;
-    int const w = window_size.x / std::int32_t(color_bars.size());
-    int const h = window_size.y;
+    float x = 0;
+    auto const w = window_size.x / color_bars.size();
+    auto const h = window_size.y;
 
     std::ranges::for_each(color_bars, [&](auto color) mutable
     {
@@ -83,6 +85,16 @@ void draw_texture(bpm::frame& frame, bpm::texture const& tex, bpm::vector2d wind
     );
 }
 
+void draw_shader(bpm::frame& frame, bpm::fragment_shader& shader, bpm::vector2d window_size, duration d)
+{
+    shader.set("u_resolution", window_size);
+    shader.set("u_time", d.count());
+    auto mouse_pos = bpm::mouse_cursor_position();
+    shader.set("u_mouse", mouse_pos);
+    auto shader_scope = shader();
+    frame(bpm::rectangle{window_size / 8, bpm::magenta}, {mouse_pos.x, mouse_pos.y});
+}
+
 void draw_text(bpm::frame& frame, bpm::text const& txt, bpm::vector2d window_size)
 {
     frame(txt, bpm::point2d{0, 0} + window_size / 2 - txt.size() / 2);
@@ -108,6 +120,26 @@ int main()
     bpm::texture tex{w, w.size() / 16, {255, 0, 0, 127}};
     tex.resize(tex.size() * 2);
 
+    std::string const shader_source
+    {
+        "uniform vec2 u_resolution;"
+        "uniform vec2 u_mouse;"
+        "uniform float u_time;"
+        ""
+        "float noise(vec2 st)"
+        "{"
+        "    return fract(sin(dot(st.xy, vec2(u_time * 1000.0, u_time * 4000.0))) * u_time * 1000.0);"
+        "}"
+        ""
+        "void main()"
+        "{"
+        "    vec2 st = gl_FragCoord.xy / u_resolution.xy;"
+        "    gl_FragColor = vec4(vec3(noise(st)), 0.5);"
+        "}"
+    };
+
+    bpm::fragment_shader shader{w, shader_source};
+
     bpm::font notosa{w, 48, bpm::font_noto_sans_regular};
     bpm::font notosm{w, 48, bpm::font_noto_sans_mono_regular};
     bpm::font notoss{w, 48, bpm::font_noto_serif_regular};
@@ -115,8 +147,12 @@ int main()
     bpm::text sentence1{"The quick brown fox jumps over the lazy dog!", notosm, bpm::white};
     bpm::text sentence2{"The quick brown fox jumps over the lazy dog!", notoss, bpm::white};
 
+    auto start_time{std::chrono::high_resolution_clock::now()};
+
     for (auto frame : w)
     {
+        duration elapsed_time = std::chrono::high_resolution_clock::now() - start_time;
+
         frame(bpm::black);
         draw_color_bars(frame, window_size);
         draw_corner_pixels(frame, window_size);
@@ -126,6 +162,7 @@ int main()
             draw_triangles(frame, window_size);
         }
         draw_texture(frame, tex, window_size);
+        draw_shader(frame, shader, window_size, elapsed_time);
         frame(im_tex, bpm::point2d{16, 16});
         draw_text(frame, sentence0, window_size - bpm::vector2d{0, 96});
         draw_text(frame, sentence1, window_size);

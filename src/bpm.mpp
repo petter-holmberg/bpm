@@ -8,20 +8,64 @@ import std;
 
 namespace bpm::inline v0 {
 
-export struct point2d
+export struct [[nodiscard]] point2d
 {
-    std::int32_t x {};
-    std::int32_t y {};
+    float x{};
+    float y{};
+
+    constexpr point2d() = default;
+
+    constexpr point2d(float vx, float vy)
+        : x{vx}
+        , y{vy}
+    {}
+
+    constexpr point2d(int vx, int vy)
+        : x{float(vx)}
+        , y{float(vy)}
+    {}
+
+    constexpr point2d(float vx, int vy)
+        : x{vx}
+        , y{float(vy)}
+    {}
+
+    constexpr point2d(int vx, float vy)
+        : x{float(vx)}
+        , y{vy}
+    {}
 
     [[nodiscard]] friend constexpr bool operator==(point2d p0, point2d p1) noexcept = default;
 };
 
 static_assert(std::regular<point2d>);
 
-export struct vector2d
+export struct [[nodiscard]] vector2d
 {
-    std::int32_t x {};
-    std::int32_t y {};
+    float x{};
+    float y{};
+
+    constexpr vector2d() = default;
+
+    constexpr vector2d(float vx, float vy)
+        : x{vx}
+        , y{vy}
+    {}
+
+    constexpr vector2d(int vx, int vy)
+        : x{float(vx)}
+        , y{float(vy)}
+    {}
+
+    constexpr vector2d(float vx, int vy)
+        : x{vx}
+        , y{float(vy)}
+    {}
+
+    constexpr vector2d(int vx, float vy)
+        : x{float(vx)}
+        , y{vy}
+    {}
 
     [[nodiscard]] friend constexpr bool operator==(vector2d v0, vector2d v1) noexcept = default;
 };
@@ -43,7 +87,7 @@ operator+=(vector2d& v0, vector2d v1) noexcept
 }
 
 export [[nodiscard]] constexpr vector2d
-operator-(vector2d const& v) noexcept
+operator-(vector2d v) noexcept
 {
     return { -v.x, -v.y };
 }
@@ -84,7 +128,7 @@ operator/(vector2d v, S s) noexcept
 }
 
 export [[nodiscard]] constexpr point2d
-operator+(point2d const& p, vector2d v) noexcept
+operator+(point2d p, vector2d v) noexcept
 {
     return { p.x + v.x, p.y + v.y };
 }
@@ -297,7 +341,7 @@ float linear2srgb(float x) noexcept
 
 std::uint8_t blend_component(float x, float y, float fraction) noexcept
 {
-    return static_cast<std::uint8_t>(linear2srgb(srgb2linear(float(x) / 256.f) * fraction + srgb2linear(float(y) / 256.f) * (1 - fraction)) * 256.f);
+    return static_cast<std::uint8_t>(linear2srgb(srgb2linear(x / 256.f) * fraction + srgb2linear(y / 256.f) * (1 - fraction)) * 256.f);
 }
 
 export auto
@@ -395,11 +439,11 @@ public:
     image() = default;
 
     explicit image(vector2d size)
-        : data(size.x * size.y, {0, 0, 0, 0})
+        : data(int(size.x * size.y), {0, 0, 0, 0})
         , img{
             .data = std::bit_cast<void*>(data.begin()),
-            .width = size.x,
-            .height = size.y,
+            .width = int(size.x),
+            .height = int(size.y),
             .mipmaps = 1,
             .format = ::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8
         }
@@ -412,12 +456,12 @@ public:
 
     color const& operator()(point2d pos) const
     {
-        return *(data.cbegin() + (pos.x + img.width * pos.y));
+        return *(data.cbegin() + (int(pos.x) + img.width * int(pos.y)));
     }
 
     color& operator()(point2d pos)
     {
-        return *(data.begin() + (pos.x + img.width * pos.y));
+        return *(data.begin() + (int(pos.x) + img.width * int(pos.y)));
     }
 };
 
@@ -492,7 +536,7 @@ public:
 
     texture(window const&, vector2d size, color col = black) noexcept
     {
-        auto img{::GenImageColor(size.x, size.y, ::Color{col.r, col.g, col.b, col.a})};
+        auto img{::GenImageColor(int(size.x), int(size.y), ::Color{col.r, col.g, col.b, col.a})};
         tex = ::LoadTextureFromImage(img);
         ::UnloadImage(img);
     }
@@ -518,9 +562,9 @@ public:
             auto img{::LoadImageFromTexture(tex)};
 
             if (algo == resize_algo::nearest_neighbor) {
-                ::ImageResizeNN(&img, size.x, size.y);
+                ::ImageResizeNN(&img, int(size.x), int(size.y));
             } else {
-                ::ImageResize(&img, size.x, size.y);
+                ::ImageResize(&img, int(size.x), int(size.y));
             }
 
             if (tex.id != 0) {
@@ -530,6 +574,93 @@ public:
             tex = ::LoadTextureFromImage(img);
             ::UnloadImage(img);
         }
+    }
+};
+
+export class fragment_shader
+{
+    ::Shader sha{};
+
+public:
+
+    class scope
+    {
+        ::Shader* sp;
+
+    public:
+
+        explicit scope(::Shader* sha)
+            : sp{sha}
+        {
+            ::BeginShaderMode(*sp);
+        }
+
+        ~scope()
+        {
+            ::EndShaderMode();
+        }
+    };
+
+    ~fragment_shader()
+    {
+        if (sha.id != 0) {
+            ::UnloadShader(sha);
+        }
+    }
+
+    fragment_shader() noexcept = default;
+
+    fragment_shader(fragment_shader const&) = delete;
+
+    fragment_shader& operator=(fragment_shader const&) = delete;
+
+    void swap(fragment_shader& s) noexcept
+    {
+        std::swap(sha, s.sha);
+    }
+
+    fragment_shader(fragment_shader&& s)
+        : sha{std::exchange(s.sha, ::Shader{})}
+    {}
+
+    fragment_shader& operator=(fragment_shader&& s)
+    {
+        if (this != &s) {
+            sha = std::exchange(s.sha, ::Shader{});
+        }
+        return *this;
+    }
+
+    fragment_shader(window const&, std::filesystem::path const& path) noexcept
+    {
+        sha = ::LoadShader(nullptr, path.string().c_str());
+    }
+
+    fragment_shader(window const&, std::string const& src) noexcept
+    {
+        sha = ::LoadShaderFromMemory(nullptr, src.c_str());
+    }
+
+    operator bool() const noexcept
+    {
+        return ::IsShaderReady(sha);
+    }
+
+    scope operator()() noexcept
+    {
+        return scope{&sha};
+    }
+
+    void set(std::string const& name, float value)
+    {
+        int loc = ::GetShaderLocation(sha, name.c_str());
+        ::SetShaderValue(sha, loc, &value, SHADER_UNIFORM_FLOAT);
+    }
+
+    void set(std::string const& name, vector2d value)
+    {
+        int loc = ::GetShaderLocation(sha, name.c_str());
+        ::SetShaderValue(sha, loc, &value, SHADER_UNIFORM_VEC2);
     }
 };
 
@@ -598,7 +729,7 @@ public:
     vector2d size() const noexcept
     {
         auto s{::MeasureTextEx(fnt->fnt, txt.c_str(), float(fnt->fnt.baseSize), 0)};
-        return {std::int32_t(s.x), std::int32_t(s.y)};
+        return {s.x, s.y};
     }
 };
 
@@ -620,12 +751,12 @@ export void mouse_cursor_show() noexcept
 export auto mouse_cursor_position() noexcept -> vector2d
 {
     ::Vector2 pos{::GetMousePosition()};
-    return {std::int32_t(pos.x), std::int32_t(pos.y)};
+    return {pos.x, pos.y};
 }
 
 export void mouse_cursor_position_set(vector2d pos) noexcept
 {
-    ::SetMousePosition(pos.x, pos.y);
+    ::SetMousePosition(int(pos.x), int(pos.y));
 }
 
 export auto mouse_button(int button) noexcept -> bool
@@ -636,7 +767,7 @@ export auto mouse_button(int button) noexcept -> bool
 export auto mouse_wheel() noexcept -> vector2d
 {
     auto vec{::GetMouseWheelMoveV()};
-    return {std::int32_t(vec.x), std::int32_t(vec.y)};
+    return {vec.x, vec.y};
 }
 
 class frame;
@@ -669,7 +800,7 @@ public:
     explicit window(config settings = {}) noexcept
         : settings{settings}
     {
-        ::InitWindow(settings.size.x, settings.size.y, settings.title.c_str());
+        ::InitWindow(int(settings.size.x), int(settings.size.y), settings.title.c_str());
         unsigned int flags{};
         if (settings.fullscreen) {
             flags |= ::FLAG_FULLSCREEN_MODE;
@@ -826,32 +957,32 @@ public:
 
     void operator()(pixel pix, point2d pos) const noexcept
     {
-        ::DrawPixel(pos.x, pos.y, ::Color{pix.col.r, pix.col.g, pix.col.b, pix.col.a});
+        ::DrawPixel(int(pos.x), int(pos.y), ::Color{pix.col.r, pix.col.g, pix.col.b, pix.col.a});
     }
 
     void operator()(line2d line, point2d pos) const noexcept
     {
         point2d end = pos + line.dir;
-        ::DrawLine(pos.x, pos.y, end.x, end.y, ::Color{line.col.r, line.col.g, line.col.b, line.col.a});
+        ::DrawLine(int(pos.x), int(pos.y), int(end.x), int(end.y), ::Color{line.col.r, line.col.g, line.col.b, line.col.a});
     }
 
     void operator()(circle c, point2d pos) const noexcept
     {
-        auto x_max = std::int32_t(c.radius);
-        for (std::int32_t y = 0; y <= c.radius; ++y) {
-            for (std::int32_t x = x_max; x >= 0; --x) {
+        auto x_max = int(c.radius);
+        for (int y = 0; y <= c.radius; ++y) {
+            for (int x = x_max; x >= 0; --x) {
                 if ((x * x) + (y * y) <= (c.radius * c.radius)) {
-                    ::DrawLine(pos.x - x, pos.y - y, pos.x + x, pos.y - y,::Color{c.col.r, c.col.g, c.col.b, c.col.a});
+                    ::DrawLine(int(pos.x) - x, int(pos.y) - y, int(pos.x) + x, int(pos.y) - y,::Color{c.col.r, c.col.g, c.col.b, c.col.a});
                     x_max = x;
                     break;
                 }
             }
         }
-        x_max = std::int32_t(c.radius);
-        for (std::int32_t y = 1; y <= c.radius; ++y) {
-            for (std::int32_t x = x_max; x >= 0; --x) {
+        x_max = int(c.radius);
+        for (int y = 1; y <= c.radius; ++y) {
+            for (int x = x_max; x >= 0; --x) {
                 if ((x * x) + (y * y) <= (c.radius * c.radius)) {
-                    ::DrawLine(pos.x - x, pos.y + y, pos.x + x, pos.y + y,::Color{c.col.r, c.col.g, c.col.b, c.col.a});
+                    ::DrawLine(int(pos.x) - x, int(pos.y) + y, int(pos.x) + x, int(pos.y) + y,::Color{c.col.r, c.col.g, c.col.b, c.col.a});
                     x_max = x;
                     break;
                 }
@@ -862,29 +993,29 @@ public:
     void operator()(triangle t, point2d pos) const noexcept
     {
         ::DrawTriangle(
-            ::Vector2{float(pos.x), float(pos.y)},
-            ::Vector2{float(pos.x + t.dir0.x), float(pos.y + t.dir0.y)},
-            ::Vector2{float(pos.x + t.dir1.x), float(pos.y + t.dir1.y)},
+            ::Vector2{pos.x, pos.y},
+            ::Vector2{pos.x + t.dir0.x, pos.y + t.dir0.y},
+            ::Vector2{pos.x + t.dir1.x, pos.y + t.dir1.y},
             ::Color{t.col.r, t.col.g, t.col.b, t.col.a}
         );
     }
 
     void operator()(rectangle r, point2d pos) const noexcept
     {
-        ::DrawRectangle(pos.x, pos.y, r.size.x, r.size.y, ::Color{r.col.r, r.col.g, r.col.b, r.col.a});
+        ::DrawRectangle(int(pos.x), int(pos.y), int(r.size.x), int(r.size.y), ::Color{r.col.r, r.col.g, r.col.b, r.col.a});
     }
 
     void operator()(texture const& tex, point2d pos) const noexcept
     {
-        ::DrawTexture(tex.tex, pos.x, pos.y, ::WHITE);
+        ::DrawTexture(tex.tex, int(pos.x), int(pos.y), ::WHITE);
     }
 
     void operator()(texture const& tex, texture::uv uv, point2d pos) const noexcept
     {
         ::DrawTextureRec(
             tex.tex,
-            ::Rectangle{float(uv.pos.x), float(uv.pos.y), float(uv.size.x), float(uv.size.y)},
-            ::Vector2{float(pos.x), float(pos.y)},
+            ::Rectangle{uv.pos.x, uv.pos.y, uv.size.x, uv.size.y},
+            ::Vector2{pos.x, pos.y},
             ::WHITE
         );
     }
@@ -893,15 +1024,15 @@ public:
     {
         ::DrawTexturePro(
             tex.tex,
-            ::Rectangle{float(uv.pos.x), float(uv.pos.y), float(uv.size.x), float(uv.size.y)},
+            ::Rectangle{uv.pos.x, uv.pos.y, uv.size.x, uv.size.y},
             ::Rectangle{
-                float(pos.x),
-                float(pos.y),
+                pos.x,
+                pos.y,
                 transform.scale * tex.size().x,
                 transform.scale * tex.size().y
             },
-            ::Vector2{transform.scale * float(transform.pivot.x),
-            transform.scale * float(transform.pivot.y)},
+            ::Vector2{transform.scale * transform.pivot.x,
+            transform.scale * transform.pivot.y},
             transform.rotation.degrees, WHITE
         );
     }
@@ -911,7 +1042,7 @@ public:
         ::DrawTextEx(
             t.fnt->fnt,
             t.txt.c_str(),
-            ::Vector2{float(pos.x), float(pos.y)},
+            ::Vector2{pos.x, pos.y},
             float(t.fnt->fnt.baseSize),
             0,
             ::Color{t.col.r, t.col.g, t.col.b, t.col.a});
